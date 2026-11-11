@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مساعدي</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef2f1; --panel:#ffffff; --ink:#15262b; --muted:#5d7176;
+  --brand:#0f5c63; --brand-ink:#ffffff; --user:#0f5c63; --user-ink:#fff;
+  --bot:#ffffff; --line:#d3dedd; --code:#12262b; --code-ink:#e6f1ef; --danger:#b3261e;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0e1a1d; --panel:#15262a; --ink:#e6f0ee; --muted:#8fa6a9; --brand:#3fb3ba; --brand-ink:#08191c;
+  --user:#1c6f77; --user-ink:#fff; --bot:#182c30; --line:#27403f; --code:#091417; --danger:#ff8a80;}
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Tajawal",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--ink);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.app{max-width:820px;height:100%;margin:0 auto;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:18px;margin:0;flex:1;font-weight:700}
+button{font:inherit;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:7px 12px}
+.ghost:hover{border-color:var(--brand)}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+#log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:360px;line-height:1.8}
+.msg{max-width:88%;padding:10px 14px;border-radius:16px;line-height:1.75;font-size:16px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.msg.user{align-self:flex-start;background:var(--user);color:var(--user-ink);border-end-start-radius:4px}
+.msg.bot{align-self:flex-end;background:var(--bot);border:1px solid var(--line);border-end-end-radius:4px}
+.msg.err{border-color:var(--danger);color:var(--danger)}
+.msg pre{background:var(--code);color:var(--code-ink);padding:10px 12px;border-radius:10px;overflow-x:auto;direction:ltr;text-align:left;white-space:pre;margin:8px 0;font-size:14px}
+.msg code{font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;unicode-bidi:embed}
+.msg :not(pre)>code{background:rgba(127,127,127,.18);padding:1px 5px;border-radius:5px;font-size:.92em}
+form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel)}
+textarea{flex:1;resize:none;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;max-height:160px;min-height:44px}
+#send{background:var(--brand);color:var(--brand-ink);border:0;border-radius:12px;padding:0 18px;font-weight:700;min-height:44px}
+#send:disabled{opacity:.5;cursor:not-allowed}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);width:min(440px,92vw);padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h2{margin:0 0 12px;font-size:18px}
+label{display:block;margin:12px 0 4px;font-size:14px;color:var(--muted)}
+input,dialog textarea{width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+dialog textarea{min-height:90px}
+.note{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.6}
+.row{display:flex;gap:8px;margin-top:16px;justify-content:flex-start}
+.primary{background:var(--brand);color:var(--brand-ink);border:0;border-radius:10px;padding:9px 18px;font-weight:700}
+@media (prefers-reduced-motion:no-preference){.dot{animation:b 1s infinite}}
+@keyframes b{50%{opacity:.3}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>مساعدي</h1>
+    <button class="ghost" id="newChat" type="button">محادثة جديدة</button>
+    
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="اكتب رسالتك هنا" aria-label="الرسالة"></textarea>
+    <button id="send" type="submit">إرسال</button>
+  </form>
+</div>
+
+<dialog id="settings">
+  <h2>كلمة السر</h2>
+  <label for="code">كلمة السر للدخول</label>
+  <input id="code" type="password" autocomplete="off" dir="ltr">
+  <div class="row">
+    <button class="primary" id="saveSet" type="button">حفظ</button>
+    <button class="ghost" id="closeSet" type="button">إلغاء</button>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = $('log'), input = $('input'), send = $('send'), dlg = $('settings');
+let history = [], busy = false, ctrl = null;
+
+function store(k, v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k, v);}catch(e){ return null; } }
+const cfg = { get code(){ return store('ac') || ''; } };
+try{ history = JSON.parse(store('ah')||'[]'); }catch(e){ history = []; }
+
+function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function render(text){
+  const parts = text.split('```');
+  return parts.map((p,i) => {
+    if(i%2){ const nl = p.indexOf('\n'); const body = nl>-1 ? p.slice(nl+1) : p; return '<pre><code>'+esc(body.replace(/\n$/,''))+'</code></pre>'; }
+    return esc(p).replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>');
+  }).join('');
+}
+function add(role, text, cls){
+  const d = document.createElement('div');
+  d.className = 'msg '+role+(cls?' '+cls:'');
+  d.dir = 'auto';
+  if(role==='bot') d.innerHTML = render(text); else d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+}
+function showAll(){
+  log.innerHTML = '';
+  if(!history.length){
+    log.innerHTML = '<div class="empty">اسألني أي حاجة: كتابة، ترجمة، شرح، برمجة.</div>';
+    return;
+  }
+  history.forEach(m => add(m.role==='user'?'user':'bot', m.content));
+}
+function save(){ store('ah', JSON.stringify(history.slice(-40))); }
+
+async function ask(text){
+  busy = true; send.disabled = true;
+  if(!history.length) log.innerHTML = '';
+  history.push({role:'user', content:text}); add('user', text);
+  const out = add('bot', '');
+  out.innerHTML = '<span class="dot">●●●</span>';
+  let acc = '';
+  ctrl = new AbortController();
+  try{
+    const res = await fetch('/api/chat', {
+      method:'POST', signal: ctrl.signal,
+      headers:{ 'content-type':'application/json', 'x-access-code': cfg.code },
+      body: JSON.stringify({ messages: history.slice(-30) })
+    });
+    if(!res.ok){
+      let msg = 'خطأ '+res.status;
+      try{ const j = await res.json(); if(j.error&&j.error.message) msg += ': '+j.error.message; }catch(e){}
+      if(res.status===401){ history.pop(); out.remove(); dlg.showModal(); busy=false; send.disabled=false; return; }
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+    while(true){
+      const {done, value} = await reader.read(); if(done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n'); buf = lines.pop();
+      for(const l of lines){
+        if(!l.startsWith('data:')) continue;
+        try{
+          const j = JSON.parse(l.slice(5));
+          if(j.type==='content_block_delta' && j.delta && j.delta.text){ acc += j.delta.text; out.innerHTML = render(acc); log.scrollTop = log.scrollHeight; }
+        }catch(e){}
+      }
+    }
+    if(acc){ history.push({role:'assistant', content:acc}); } else { history.pop(); out.remove(); }
+    save();
+  }catch(e){
+    history.pop();
+    if(e.name==='AbortError'){ if(acc) history.push({role:'user',content:text},{role:'assistant',content:acc}); }
+    else{
+      out.classList.add('err');
+      out.textContent = (e.message==='Failed to fetch') ? 'ما قدرت أتصل بالإنترنت. اتأكد من الشبكة وجرب تاني.' : e.message;
+    }
+  }finally{ busy = false; send.disabled = false; ctrl = null; input.focus(); }
+}
+
+$('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const t = input.value.trim(); if(!t || busy) return;
+  input.value = ''; input.style.height = 'auto'; ask(t);
+});
+input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); $('form').requestSubmit(); }});
+input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight,160)+'px'; });
+$('newChat').onclick = () => { if(ctrl) ctrl.abort(); history = []; save(); showAll(); };
+$('closeSet').onclick = () => dlg.close();
+$('saveSet').onclick = () => { store('ac', $('code').value.trim()); dlg.close(); };
+showAll();
+</script>
+</body>
+</html>
